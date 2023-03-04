@@ -1,41 +1,35 @@
-package com.tyeng.mockbluetoothheadsetapp.com.tyeng.mockbluetoothheadsetapp
+package com.tyeng.mockbluetoothheadsetapp
 
-import android.content.Context
-import android.speech.tts.TextToSpeech
+import android.app.Service
+import android.content.Intent
+import android.os.IBinder
 import android.util.Log
-import java.util.*
 
-object TextToSpeechManager : TextToSpeech.OnInitListener {
-    private const val TAG = "TextToSpeechManager"
-    private var mTextToSpeech: TextToSpeech? = null
-    fun initialize(context: Context) {
-        mTextToSpeech = TextToSpeech(context, this)
+class BluetoothHeadsetService : Service() {
+
+    companion object {
+        private const val TAG = "BluetoothHeadsetService"
     }
 
-    fun speak(text: String) {
-        if (mTextToSpeech != null && mTextToSpeech!!.isSpeaking) {
-            mTextToSpeech!!.stop()
-        }
+    private lateinit var mockBluetoothHeadset: MockBluetoothHeadset
+    private lateinit var textToSpeechManager: TextToSpeechManager
 
-        val result: Int = mTextToSpeech?.setLanguage(Locale.US) ?: TextToSpeech.ERROR
-        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            Log.e(TAG, "This Language is not supported")
-            return
-        }
+    override fun onCreate() {
+        super.onCreate()
 
-        mTextToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+        mockBluetoothHeadset = MockBluetoothHeadset(this)
+        mockBluetoothHeadset.enableBluetooth()
+
+        textToSpeechManager = TextToSpeechManager(this)
+        textToSpeechManager.init()
     }
 
-    fun shutdown() {
-        mTextToSpeech?.stop()
-        mTextToSpeech?.shutdown()
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand")
+        return START_STICKY
     }
 
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            Log.d(TAG, "TextToSpeech initialized.")
-        } else {
-            Log.e(TAG, "TextToSpeech initialization failed!")
-        }
-    }
-}
+    override fun onDestroy() {
+        super.onDestroy()
+        mockBluetoothHeadset.disableBluetooth()
+        text

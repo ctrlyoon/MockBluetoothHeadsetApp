@@ -12,7 +12,6 @@ import android.media.AudioManager
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ActivityCompat
-import com.tyeng.mockbluetoothheadsetapp.com.tyeng.mockbluetoothheadsetapp.TextToSpeechManager
 
 class BluetoothHeadsetService : Service() {
 
@@ -105,16 +104,24 @@ class BluetoothHeadsetService : Service() {
         }
     }
 
-    private val mBluetoothStateListener = object : BluetoothAdapter.StateChangedListener() {
-        override fun onStateChanged(adapter: BluetoothAdapter?, state: Int) {
-            if (state == BluetoothAdapter.STATE_OFF) {
-                Log.d(TAG, "Bluetooth off")
-            } else if (state == BluetoothAdapter.STATE_ON) {
-                Log.d(TAG, "Bluetooth on")
-                btAdapter.getProfileProxy(this@BluetoothHeadsetService, mProfileListener, BluetoothProfile.HEADSET)
+    private val mBluetoothStateListener = object : BluetoothProfile.ServiceListener {
+        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+            if (profile == BluetoothProfile.A2DP) {
+                // A2DP is now connected
+            } else if (profile == BluetoothProfile.HEADSET) {
+                // HFP is now connected
+            }
+        }
+
+        override fun onServiceDisconnected(profile: Int) {
+            if (profile == BluetoothProfile.A2DP) {
+                // A2DP is now disconnected
+            } else if (profile == BluetoothProfile.HEADSET) {
+                // HFP is now disconnected
             }
         }
     }
+
 
     init {
         btAdapter.getProfileProxy(this@BluetoothHeadsetService, mProfileListener, BluetoothProfile.HEADSET)
