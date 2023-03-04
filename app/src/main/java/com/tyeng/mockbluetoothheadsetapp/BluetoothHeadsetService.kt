@@ -1,20 +1,22 @@
 package com.tyeng.mockbluetoothheadsetapp
 
-import android.Manifest
+import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothHeadset
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.IBinder
+import android.speech.tts.TextToSpeech
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
-import com.tyeng.mockbluetoothheadsetapp.TextToSpeechManager
+import java.util.*
 
-class BluetoothHeadsetService : Service() {
+class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener, PhoneStateListener {
 
     companion object {
         private const val TAG = "BluetoothHeadsetService"
@@ -24,6 +26,9 @@ class BluetoothHeadsetService : Service() {
     private lateinit var btAdapter: BluetoothAdapter
     private lateinit var mockBluetoothHeadset: MockBluetoothHeadset
     private lateinit var mBluetoothHeadset: BluetoothHeadset
+    private lateinit var telephonyManager: TelephonyManager
+    private var mTextToSpeech: TextToSpeech? = null
+    private lateinit var ttsManager: TextToSpeechManager
 
     override fun onCreate() {
         super.onCreate()
@@ -32,6 +37,10 @@ class BluetoothHeadsetService : Service() {
         btAdapter = BluetoothAdapter.getDefaultAdapter()
         mockBluetoothHeadset = MockBluetoothHeadset(this)
         mockBluetoothHeadset.enableBluetooth()
+        mTextToSpeech = TextToSpeech(this, this)
+        ttsManager = TextToSpeechManager(this, mTextToSpeech!!)
+        telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        telephonyManager.listen(this, PhoneStateListener.LISTEN_CALL_STATE)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -42,10 +51,23 @@ class BluetoothHeadsetService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         mockBluetoothHeadset.disableBluetooth()
+        mTextToSpeech?.shutdown()
+        telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
     }
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result: Int = mTextToSpeech?.setLanguage(Locale.US) ?: TextToSpeech.ERROR
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e(TAG, "This Language is not supported")
+            }
+        } else {
+            Log.e(TAG, "Initialization Failed!")
+        }
     }
 
     private val mProfileListener = object : BluetoothProfile.ServiceListener {
@@ -53,37 +75,12 @@ class BluetoothHeadsetService : Service() {
             Log.d(TAG, "onServiceConnected")
             if (profile == BluetoothProfile.HEADSET) {
                 mBluetoothHeadset = proxy as BluetoothHeadset
-                if (ActivityCompat.checkSelfPermission(applicationContext,Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    // TODO: Consider calling
-                    //    ActivityCompat#requestPermissions
-                    // here to request the missing permissions, and then overriding
-                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                    //                                          int[] grantResults)
-                    // to handle the case where the user grants the permission. See the documentation
-                    // for ActivityCompat#requestPermissions for more details.
-                    return
-                }
                 mBluetoothHeadset.startVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
                 Log.d(TAG, "startVoiceRecognition")
                 Thread.sleep(3000)
-                if (ActivityCompat.checkSelfPermission(
-                        applicationContext,
-                        Manifest.permission.BLUETOOTH_CONNECT
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    // TODO: Consider calling
-                    //    ActivityCompat#requestPermissions
-                    // here to request the missing permissions, and then overriding
-                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                    //                                          int[] grantResults)
-                    // to handle the case where the user grants the permission. See the documentation
-                    // for ActivityCompat#requestPermissions for more details.
-                    return
-                }
                 mBluetoothHeadset.stopVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
                 Log.d(TAG, "stopVoiceRecognition")
-                TextToSpeechManager.speak("Incoming call answered.")
+                ttsManager.speak("Incoming call answered.")
                 autoAnswer()
             }
         }
@@ -96,7 +93,12 @@ class BluetoothHeadsetService : Service() {
     private fun autoAnswer() {
         try {
             val headset = Class.forName(mBluetoothHeadset.javaClass.name)
-            val m = headset.getDeclaredMethod("phoneStateChanged", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, String::class.java)
+            val m = headset.getDeclaredMethod(
+                "phoneStateChanged",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                String::class.java
+            )
             m.isAccessible = true
             m.invoke(mBluetoothHeadset, 1, 0, "")
             Log.d(TAG, "Auto answer.")
@@ -105,26 +107,104 @@ class BluetoothHeadsetService : Service() {
         }
     }
 
-    private val mBluetoothStateListener = object : BluetoothProfile.ServiceListener {
+    private fun requestBluetoothConnectPermission() {
+        if (ActivityCompat.checkSelfPermission(this,Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+                1
+            )
+        }
+    }
+
+    private val mHeadsetProfileListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-            if (profile == BluetoothProfile.A2DP) {
-                // A2DP is now connected
-            } else if (profile == BluetoothProfile.HEADSET) {
-                // HFP is now connected
+            if (profile == BluetoothProfile.HEADSET) {
+                mBluetoothHeadset = proxy as BluetoothHeadset
+                if (mBluetoothHeadset.connectedDevices.isNotEmpty()) {
+                    val device = mBluetoothHeadset.connectedDevices[0]
+                    setActiveDevice(device)
+                    Log.d(TAG, "Active device set to ${device.name}")
+                }
             }
         }
-
         override fun onServiceDisconnected(profile: Int) {
-            if (profile == BluetoothProfile.A2DP) {
-                // A2DP is now disconnected
-            } else if (profile == BluetoothProfile.HEADSET) {
-                // HFP is now disconnected
+            if (profile == BluetoothProfile.HEADSET) {
+                mBluetoothHeadset = null
+                Log.d(TAG, "Headset disconnected")
             }
         }
     }
 
+    private fun connectToHeadset() {
+        if (!btAdapter.isEnabled) {
+            Log.e(TAG, "Bluetooth is not enabled")
+            return
+        }
+        if (mBluetoothHeadset != null && mBluetoothHeadset.connectedDevices.isNotEmpty()) {
+            Log.d(TAG, "Already connected to a headset")
+            return
+        }
 
-    init {
-        btAdapter.getProfileProxy(this@BluetoothHeadsetService, mProfileListener, BluetoothProfile.HEADSET)
+        val pairedDevices: Set<BluetoothDevice>? = btAdapter.bondedDevices
+        pairedDevices?.forEach { device ->
+            if (btAdapter.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTED) {
+                Log.d(TAG, "Headset is already connected")
+                return
+            }
+
+            if (btAdapter.getProfileConnectionState(BluetoothProfile.A2DP) == BluetoothProfile.STATE_CONNECTED) {
+                Log.d(TAG, "A2DP is already connected")
+                return
+            }
+
+            if (btAdapter.getProfileConnectionState(BluetoothProfile.HEALTH) == BluetoothProfile.STATE_CONNECTED) {
+                Log.d(TAG, "Health is already connected")
+                return
+            }
+
+            if (device.bluetoothClass.majorDeviceClass == BluetoothClass.Device.Major.AUDIO_VIDEO) {
+                btAdapter.getProfileProxy(this, mHeadsetProfileListener, BluetoothProfile.HEADSET)
+            }
+        }
+    }
+
+    private fun setActiveDevice(device: BluetoothDevice) {
+        try {
+            val setPriorityMethod = mBluetoothHeadset.javaClass.getMethod(
+                "setPriority",
+                BluetoothDevice::class.java,
+                Int::class.javaPrimitiveType
+            )
+            setPriorityMethod.invoke(mBluetoothHeadset, device, 100)
+            val setActiveDeviceMethod = mBluetoothHeadset.javaClass.getMethod(
+                "setActiveDevice",
+                BluetoothDevice::class.java
+            )
+            setActiveDeviceMethod.invoke(mBluetoothHeadset, device)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set active device: ${e.message}")
+        }
+    }
+
+    override fun onCallStateChanged(state: Int, incomingNumber: String?) {
+        super.onCallStateChanged(state, incomingNumber)
+        when (state) {
+            TelephonyManager.CALL_STATE_IDLE -> {
+                Log.d(TAG, "Call ended")
+                ttsManager.speak("Call ended")
+            }
+            TelephonyManager.CALL_STATE_RINGING -> {
+                Log.d(TAG, "Incoming call from $incomingNumber")
+                ttsManager.speak("Incoming call from $incomingNumber")
+                connectToHeadset()
+            }
+            TelephonyManager.CALL_STATE_OFFHOOK -> {
+                Log.d(TAG, "In a call with $incomingNumber")
+                ttsManager.speak("In a call with $incomingNumber")
+            }
+        }
     }
 }
+
