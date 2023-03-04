@@ -1,4 +1,4 @@
-package com.tyeng.mockbluetoothheadsetapp.com.tyeng.mockbluetoothheadsetapp
+package com.tyeng.mockbluetoothheadsetapp
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
