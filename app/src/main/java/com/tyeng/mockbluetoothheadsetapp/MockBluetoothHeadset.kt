@@ -1,91 +1,67 @@
 package com.tyeng.mockbluetoothheadsetapp
 
-import android.Manifest.permission.ANSWER_PHONE_CALLS
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothHeadset
+import android.bluetooth.BluetoothHeadset.*
+import android.bluetooth.BluetoothProfile
 import android.content.Context
-import android.os.Build
-import android.os.Handler
-import android.telecom.TelecomManager
-import android.telephony.TelephonyManager
+import android.media.AudioManager
+import android.speech.tts.TextToSpeech
 import android.util.Log
-import androidx.annotation.RequiresApi
-import androidx.core.app.ActivityCompat
+import java.util.*
 
-class MockBluetoothHeadset(private val context: Context) {
+class MockBluetoothHeadset(private val context: Context) : TextToSpeech.OnInitListener {
 
-    private var mService: BluetoothHeadsetService? = null
-    private var mCallbacks: BluetoothHeadsetServiceCallbacks? = null
+    private val TAG = "MockBluetoothHeadset"
+    private var btAdapter: BluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+    private lateinit var btHeadset: BluetoothHeadset
+    private lateinit var audioManager: AudioManager
+    private lateinit var tts: TextToSpeech
 
-    private val mHandler = Handler()
-
-    private var mIsSimulatingHeadset = false
-
-    fun start() {
-        mService = BluetoothHeadsetService(context, object : BluetoothHeadsetServiceCallbacks {
-            override fun onHeadsetConnected() {
-                Log.d(TAG, "Headset connected")
-                mIsSimulatingHeadset = true
-            }
-
-            override fun onHeadsetDisconnected() {
-                Log.d(TAG, "Headset disconnected")
-                mIsSimulatingHeadset = false
-            }
-
-            override fun onScoAudioConnected() {
-                Log.d(TAG, "SCO audio connected")
-                mHandler.postDelayed({
-                    acceptCall()
-                }, 3000) // Wait 3 seconds before accepting the call
-            }
-
-            override fun onScoAudioDisconnected() {
-                Log.d(TAG, "SCO audio disconnected")
-            }
-
-            override fun onError() {
-                Log.d(TAG, "Error occurred")
-            }
-        })
-
-        mService?.start()
+    init {
+        tts = TextToSpeech(context, this)
     }
 
-    fun stop() {
-        mService?.stop()
-        mService = null
+    fun enableBluetooth() {
+        if (!btAdapter.isEnabled) {
+            btAdapter.enable()
+        }
+        btAdapter.getProfileProxy(context, mProfileListener, HEADSET)
     }
 
-    private fun acceptCall() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            answerRingingCall()
+    private val mProfileListener = object : ServiceListener {
+        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+            if (profile == HEADSET) {
+                btHeadset = proxy as BluetoothHeadset
+                if (btHeadset.connectedDevices.isNotEmpty()) {
+                    Log.d(TAG, "Connected device found")
+                    val device = btHeadset.connectedDevices[0]
+                    if (device != null) {
+                        Log.d(TAG, "Device name: ${device.name}")
+                        if (btHeadset.getAudioState(device) == AUDIO_STATE_DISCONNECTED) {
+                            btHeadset.startVoiceRecognition(device)
+                            Log.d(TAG, "startVoiceRecognition")
+                            Thread.sleep(3000)
+                            btHeadset.stopVoiceRecognition(device)
+                            Log.d(TAG, "stopVoiceRecognition")
+                            tts.speak("Incoming call from ${device.name}", TextToSpeech.QUEUE_FLUSH, null, null)
+                        }
+                    }
+                }
+            }
+        }
+
+        override fun onServiceDisconnected(profile: Int) {}
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result: Int = tts.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e(TAG, "This Language is not supported")
+            }
         } else {
-            answerCall()
+            Log.e(TAG, "Initialization Failed!")
         }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun answerCall() {
-        try {
-            val telephonyService = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-            val m = telephonyService.javaClass.getDeclaredMethod("answerRingingCall")
-            m.invoke(telephonyService)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error answering call: ${e.message}")
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun answerRingingCall() {
-        val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
-            == PackageManager.PERMISSION_GRANTED) {
-            telecomManager.acceptRingingCall()
-        } else {
-            Log.e(TAG, "Permission to answer phone calls not granted")
-        }
-    }
-
-    companion object {
-        private const val TAG = "MockBluetoothHeadset"
     }
 }
