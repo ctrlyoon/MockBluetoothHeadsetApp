@@ -1,128 +1,92 @@
-package com.tyeng.mockbluetoothheadsetapp
-
 import android.app.Service
+import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothHeadset
 import android.bluetooth.BluetoothProfile
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.media.AudioManager
+import android.os.Binder
+import android.os.Build
+import android.os.Handler
 import android.os.IBinder
-import android.speech.tts.TextToSpeech
-import android.util.Log
-import java.util.*
+import android.view.KeyEvent
+import android.widget.Toast
 
-class BluetoothHeadsetService : Service(), BluetoothProfile.ServiceListener {
+class BluetoothHeadsetService : Service() {
 
-    private lateinit var bluetoothAdapter: BluetoothAdapter
-    private var bluetoothHeadset: BluetoothHeadset? = null
-    private lateinit var tts: TextToSpeech
-    private lateinit var audioManager: AudioManager
+    private var mBinder: IBinder = LocalBinder()
+    private lateinit var mBluetoothAdapter: BluetoothAdapter
+    private lateinit var mBluetoothHeadset: BluetoothHeadset
+    private lateinit var mBluetoothProfile: BluetoothProfile
+    private lateinit var mHandler: Handler
 
-    companion object {
-        private const val TAG = "BluetoothHeadsetService"
+    private val mHeadsetProfileListener = object : BluetoothProfile.ServiceListener {
+        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
+            if (profile == BluetoothProfile.HEADSET) {
+                mBluetoothHeadset = proxy as BluetoothHeadset
+                mBluetoothProfile = proxy
+                mHandler.post { Toast.makeText(applicationContext, "Headset profile connected", Toast.LENGTH_SHORT).show() }
+            }
+        }
+
+        override fun onServiceDisconnected(profile: Int) {
+            if (profile == BluetoothProfile.HEADSET) {
+                mBluetoothHeadset = null
+                mBluetoothProfile = null
+                mHandler.post { Toast.makeText(applicationContext, "Headset profile disconnected", Toast.LENGTH_SHORT).show() }
+            }
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize Bluetooth adapter
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        mHandler = Handler()
 
-        // Initialize TTS
-        tts = TextToSpeech(applicationContext) { status ->
-            if (status != TextToSpeech.ERROR) {
-                tts.language = Locale.US
-            }
-        }
-
-        // Initialize AudioManager
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-        // Register broadcast receiver for incoming calls
-        val intentFilter = IntentFilter()
-        intentFilter.addAction("android.intent.action.PHONE_STATE")
-        registerReceiver(callReceiver, intentFilter)
-
-        // Start BluetoothHeadsetService
-        bluetoothAdapter.getProfileProxy(applicationContext, this, BluetoothProfile.HEADSET)
+        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        mBluetoothAdapter.getProfileProxy(this, mHeadsetProfileListener, BluetoothProfile.HEADSET)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
+    override fun onBind(intent: Intent?): IBinder? {
+        return mBinder
     }
 
     override fun onDestroy() {
         super.onDestroy()
 
-        // Unregister broadcast receiver for incoming calls
-        unregisterReceiver(callReceiver)
-
-        // Stop TTS
-        if (tts != null) {
-            tts.stop()
-            tts.shutdown()
-        }
-
-        // Disconnect BluetoothHeadset
-        if (bluetoothAdapter != null && bluetoothHeadset != null) {
-            bluetoothAdapter.closeProfileProxy(BluetoothProfile.HEADSET, bluetoothHeadset)
-            bluetoothHeadset = null
-        }
+        mBluetoothAdapter.closeProfileProxy(BluetoothProfile.HEADSET, mBluetoothProfile)
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
+    inner class LocalBinder : Binder() {
+        val service: BluetoothHeadsetService
+            get() = this@BluetoothHeadsetService
     }
 
-    // BluetoothProfile.ServiceListener methods
-
-    override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
-        if (profile == BluetoothProfile.HEADSET) {
-            bluetoothHeadset = proxy as BluetoothHeadset
-            Log.i(TAG, "BluetoothHeadsetService connected")
-        }
-    }
-
-    override fun onServiceDisconnected(profile: Int) {
-        if (profile == BluetoothProfile.HEADSET) {
-            bluetoothHeadset = null
-            Log.i(TAG, "BluetoothHeadsetService disconnected")
-        }
-    }
-
-    // BroadcastReceiver for incoming calls
-
-    private val callReceiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val state = intent?.getStringExtra("state")
-
-            if (state.equals("RINGING", ignoreCase = true)) {
-                val phoneNumber = intent?.getStringExtra("incoming_number")
-                Log.i(TAG, "Incoming call from $phoneNumber")
-
-                // Play greeting message
-                playGreetingMessage()
-
-                // Route audio to BluetoothHeadset
-                audioManager.mode = AudioManager.MODE_IN_CALL
-                audioManager.isBluetoothScoOn = true
-                audioManager.startBluetoothSco()
-            } else if (state.equals("IDLE", ignoreCase = true)) {
-                Log.i(TAG, "Call ended")
-
-                // Stop routing audio to BluetoothHeadset
-                audioManager.mode = AudioManager.MODE_NORMAL
-                audioManager.stopBluetoothSco()
-                audioManager.isBluetoothScoOn = false
+    fun answerCall() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (mBluetoothHeadset != null) {
+                mBluetoothHeadset.javaClass.getMethod("acceptCall").invoke(mBluetoothHeadset)
+                mHandler.postDelayed({
+                    mBluetoothHeadset.javaClass.getMethod("endCall").invoke(mBluetoothHeadset)
+                }, 3000)
+            }
+        } else {
+            val mHeadset = mBluetoothAdapter.getProfileConnectionState(BluetoothProfile.HEADSET)
+            val mAudio = mBluetoothAdapter.getProfileConnectionState(BluetoothProfile.A2DP)
+            if (mHeadset == BluetoothHeadset.STATE_CONNECTED || mAudio == BluetoothA2dp.STATE_CONNECTED) {
+                val mAudioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val btnState = mAudioManager.getMode()
+                mAudioManager.setMode(AudioManager.MODE_IN_CALL)
+                val mKeyEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_HEADSETHOOK)
+                try {
+                    val dispatchMethod = AudioManager::class.java.getMethod("dispatchMediaKeyEvent", KeyEvent::class.java)
+                    dispatchMethod.invoke(mAudioManager, mKeyEvent)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                mAudioManager.setMode(btnState)
             }
         }
-    }
-
-    // Play a greeting message using TTS
-    private fun playGreetingMessage() {
-        tts.speak("Hello, how may I assist you?", TextToSpeech.QUEUE_FLUSH, null, null)
     }
 }
