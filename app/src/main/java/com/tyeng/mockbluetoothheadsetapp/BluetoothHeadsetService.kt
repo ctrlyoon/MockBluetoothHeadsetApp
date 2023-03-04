@@ -15,7 +15,8 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import java.util.*
 
-class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener, PhoneStateListener {
+
+class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener {
 
     companion object {
         private const val TAG = "BluetoothHeadsetService"
@@ -39,7 +40,11 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener, PhoneSta
         mTextToSpeech = TextToSpeech(this, this)
         ttsManager = TextToSpeechManager(this, mTextToSpeech!!)
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-        telephonyManager.listen(this, PhoneStateListener.LISTEN_CALL_STATE)
+        telephonyManager.listen(object : PhoneStateListener() {
+            override fun onCallStateChanged(state: Int, incomingNumber: String?) {
+                // Handle call state changes here
+            }
+        }, PhoneStateListener.LISTEN_CALL_STATE)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -51,7 +56,11 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener, PhoneSta
         super.onDestroy()
         mockBluetoothHeadset.disableBluetooth()
         mTextToSpeech?.shutdown()
-        telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
+        telephonyManager.listen(object : PhoneStateListener() {
+            override fun onCallStateChanged(state: Int, incomingNumber: String?) {
+                // Handle call state changes here
+            }
+        }, PhoneStateListener.LISTEN_CALL_STATE)
     }
 
     override fun onBind(intent: Intent?): IBinder? {
