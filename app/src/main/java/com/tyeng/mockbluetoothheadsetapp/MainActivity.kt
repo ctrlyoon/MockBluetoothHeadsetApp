@@ -1,74 +1,70 @@
 package com.tyeng.mockbluetoothheadsetapp
 
-import android.Manifest
-import com.tyeng.mockbluetoothheadsetapp.BluetoothHeadsetService
-import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothProfile
+import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.media.AudioManager
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
 import android.util.Log
-import androidx.core.app.ActivityCompat
-import java.util.*
+import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
     }
 
-    private lateinit var audioManager: AudioManager
     private lateinit var btAdapter: BluetoothAdapter
-    private lateinit var tts: TextToSpeech
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         btAdapter = BluetoothAdapter.getDefaultAdapter()
-        tts = TextToSpeech(this) { status ->
-            if (status != TextToSpeech.ERROR) {
-                tts.language = Locale.US
-            }
-        }
+        val intent = Intent(this, BluetoothHeadsetService::class.java)
+        startService(intent)
+    }
 
-        // Enable Bluetooth
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, "onResume")
         if (!btAdapter.isEnabled) {
-            val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.BLUETOOTH_CONNECT
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
-                    1
-                )
+            btAdapter.enable()
+        }
+        btAdapter.getProfileProxy(this, mProfileListener, BluetoothProfile.HEADSET)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "onPause")
+        btAdapter.closeProfileProxy(BluetoothProfile.HEADSET, mBluetoothHeadset)
+    }
+
+    private val mProfileListener = object : BluetoothProfile.ServiceListener {
+        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+            if (profile == BluetoothProfile.HEADSET) {
+                mBluetoothHeadset = proxy as BluetoothProfile
             }
-            startActivity(enableIntent)
         }
 
-        // Start mock Bluetooth headset service
-        val startIntent = Intent(this, BluetoothHeadsetService::class.java)
-        startService(startIntent)
-
-        // Automatically answer incoming call after 3 seconds
-        Thread.sleep(3000)
-        if (audioManager.mode == AudioManager.MODE_IN_CALL) {
-            Log.d(TAG, "Answering incoming call...")
-            audioManager.isSpeakerphoneOn = true
-            audioManager.setBluetoothScoOn(true)
-            audioManager.startBluetoothSco()
-            audioManager.setMode(AudioManager.MODE_IN_CALL)
-            tts.speak("Incoming call answered.", TextToSpeech.QUEUE_FLUSH, null, null)
+        override fun onServiceDisconnected(profile: Int) {
+            if (profile == BluetoothProfile.HEADSET) {
+                mBluetoothHeadset = null
+            }
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        tts.shutdown()
+    private val mBluetoothHeadset = object : BluetoothProfile.ServiceListener {
+        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+            if (profile == BluetoothProfile.HEADSET) {
+                Log.d(TAG, "Bluetooth headset connected")
+            }
+        }
+
+        override fun onServiceDisconnected(profile: Int) {
+            if (profile == BluetoothProfile.HEADSET) {
+                Log.d(TAG, "Bluetooth headset disconnected")
+            }
+        }
     }
 }

@@ -41,7 +41,7 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener {
         mockBluetoothHeadset = MockBluetoothHeadset(this)
         mockBluetoothHeadset.enableBluetooth()
         mTextToSpeech = TextToSpeech(this, this)
-        ttsManager = TextToSpeechManager(this, mTextToSpeech!!)
+        ttsManager = TextToSpeechManager(this, mTextToSpeech)
         callManager = CallManager(this)
     }
 
@@ -94,71 +94,50 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun requestBluetoothConnectPermission() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
                 1
             )
         } else {
-            connectBluetoothHeadset()
+            Log.d(TAG, "Already has permission to connect Bluetooth")
         }
     }
 
-    fun connectBluetoothHeadset() {
-        if (btAdapter.isEnabled) {
-            if (mBluetoothHeadset != null) {
-                if (mBluetoothHeadset.getConnectedDevices().isEmpty()) {
-                    btAdapter.getProfileProxy(this, mProfileListener, BluetoothProfile.HEADSET)
-                } else {
-                    mHandler.postDelayed({
-                        ttsManager.speak("Bluetooth headset already connected.")
-                        callManager.startCall()
-                    }, 3000)
-                }
-            } else {
-                ttsManager.speak("Bluetooth is not supported on this device.")
-            }
-        } else {
-            ttsManager.speak("Bluetooth is not enabled.")
+    private fun startVoiceRecognition() {
+        if (mBluetoothHeadset.getConnectedDevices().isNotEmpty()) {
+            mBluetoothHeadset.startVoiceRecognition(mBluetoothHeadset.getConnectedDevices()[0])
+            Log.d(TAG, "startVoiceRecognition")
         }
     }
 
-    fun startVoiceRecognition() {
-        if (btAdapter.isEnabled) {
-            if (mBluetoothHeadset != null) {
-                if (!mBluetoothHeadset.getConnectedDevices().isEmpty()) {
-                    mBluetoothHeadset.startVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
-                    Log.d(TAG, "startVoiceRecognition")
-                    mHandler.postDelayed({
-                        mBluetoothHeadset.stopVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
-                        Log.d(TAG, "stopVoiceRecognition")
-                    }, 3000)
-                } else {
-                    ttsManager.speak("Bluetooth headset is not connected.")
-                }
-            } else {
-                ttsManager.speak("Bluetooth is not supported on this device.")
-            }
-        } else {
-            ttsManager.speak("Bluetooth is not enabled.")
+    private fun stopVoiceRecognition() {
+        if (mBluetoothHeadset.getConnectedDevices().isNotEmpty()) {
+            mBluetoothHeadset.stopVoiceRecognition(mBluetoothHeadset.getConnectedDevices()[0])
+            Log.d(TAG, "stopVoiceRecognition")
         }
     }
 
-    fun stopVoiceRecognition() {
-        if (btAdapter.isEnabled) {
-            if (mBluetoothHeadset != null) {
-                if (!mBluetoothHeadset.getConnectedDevices().isEmpty()) {
-                    mBluetoothHeadset.stopVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
-                    Log.d(TAG, "stopVoiceRecognition")
-                } else {
-                    ttsManager.speak("Bluetooth headset is not connected.")
+    private val mHeadsetProfileListener: BluetoothProfile.ServiceListener =
+        object : BluetoothProfile.ServiceListener {
+            override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                if (profile == BluetoothProfile.HEADSET) {
+                    mBluetoothHeadset = proxy as BluetoothHeadset
+                    mBluetoothHeadset.connect(mBluetoothHeadset.getConnectedDevices()[0])
+                    Log.d(TAG, "onServiceConnected: Bluetooth Headset profile connected.")
                 }
-            } else {
-                ttsManager.speak("Bluetooth is not supported on this device.")
             }
-        } else {
-            ttsManager.speak("Bluetooth is not enabled.")
+
+            override fun onServiceDisconnected(profile: Int) {
+                if (profile == BluetoothProfile.HEADSET) {
+                    mBluetoothHeadset = null
+                    Log.d(TAG, "onServiceDisconnected: Bluetooth Headset profile disconnected.")
+                }
+            }
         }
-    }
 }
