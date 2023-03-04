@@ -1,10 +1,16 @@
+package com.tyeng.mockbluetoothheadsetapp
+
+import android.Manifest
+import com.tyeng.mockbluetoothheadsetapp.BluetoothHeadsetService
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import java.util.*
 
 class MainActivity : Activity() {
@@ -31,6 +37,17 @@ class MainActivity : Activity() {
         // Enable Bluetooth
         if (!btAdapter.isEnabled) {
             val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            if (ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+                    1
+                )
+            }
             startActivity(enableIntent)
         }
 

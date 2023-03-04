@@ -1,78 +1,91 @@
 package com.tyeng.mockbluetoothheadsetapp
 
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothHeadset
-import android.bluetooth.BluetoothProfile
-import android.bluetooth.BluetoothProfile.ServiceListener
-import android.content.ContentValues.TAG
+import android.Manifest.permission.ANSWER_PHONE_CALLS
 import android.content.Context
 import android.os.Build
+import android.os.Handler
 import android.telecom.TelecomManager
+import android.telephony.TelephonyManager
 import android.util.Log
-import androidx.core.content.ContextCompat.getSystemService
-import javax.security.auth.callback.Callback
+import androidx.annotation.RequiresApi
+import androidx.core.app.ActivityCompat
 
+class MockBluetoothHeadset(private val context: Context) {
 
-var mBluetoothHeadset: BluetoothHeadset? = null
-private var mConnectedBluetoothDevice: BluetoothDevice? = null
+    private var mService: BluetoothHeadsetService? = null
+    private var mCallbacks: BluetoothHeadsetServiceCallbacks? = null
 
-private val mBluetoothHeadsetListener: ServiceListener = object : ServiceListener {
-    override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-        if (profile == BluetoothProfile.HEADSET) {
-            mBluetoothHeadset = proxy as BluetoothHeadset
-            Log.d(TAG, "BluetoothHeadset proxy obtained")
-            val devices = mBluetoothHeadset!!.connectedDevices
-            if (!devices.isEmpty()) {
-                mConnectedBluetoothDevice = devices[0]
-                Log.d(TAG, "Connected Bluetooth Device: " + mConnectedBluetoothDevice!!.name)
+    private val mHandler = Handler()
+
+    private var mIsSimulatingHeadset = false
+
+    fun start() {
+        mService = BluetoothHeadsetService(context, object : BluetoothHeadsetServiceCallbacks {
+            override fun onHeadsetConnected() {
+                Log.d(TAG, "Headset connected")
+                mIsSimulatingHeadset = true
             }
-        }
+
+            override fun onHeadsetDisconnected() {
+                Log.d(TAG, "Headset disconnected")
+                mIsSimulatingHeadset = false
+            }
+
+            override fun onScoAudioConnected() {
+                Log.d(TAG, "SCO audio connected")
+                mHandler.postDelayed({
+                    acceptCall()
+                }, 3000) // Wait 3 seconds before accepting the call
+            }
+
+            override fun onScoAudioDisconnected() {
+                Log.d(TAG, "SCO audio disconnected")
+            }
+
+            override fun onError() {
+                Log.d(TAG, "Error occurred")
+            }
+        })
+
+        mService?.start()
     }
 
-    override fun onServiceDisconnected(profile: Int) {
-        if (profile == BluetoothProfile.HEADSET) {
-            mBluetoothHeadset = null
-            mConnectedBluetoothDevice = null
-            Log.d(TAG, "BluetoothHeadset proxy lost")
-        }
-    }
-}
-
-private val mBluetoothHeadsetCallback: BluetoothHeadset.Callback = object : Callback() {
-    fun onBluetoothStateChanged(state: Int) {
-        Log.d(TAG, "BluetoothHeadset state: $state")
+    fun stop() {
+        mService?.stop()
+        mService = null
     }
 
-    fun onConnectionStateChanged(device: BluetoothDevice, state: Int) {
-        Log.d(
-            TAG,
-            "BluetoothHeadset connection state changed: " + state + " for device: " + device.name
-        )
-        if (state == BluetoothHeadset.STATE_AUDIO_CONNECTED) {
-            mConnectedBluetoothDevice = device
-            Log.d(TAG, "BluetoothHeadset audio connected: " + mConnectedBluetoothDevice!!.name)
+    private fun acceptCall() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            answerRingingCall()
+        } else {
             answerCall()
-        } else if (state == BluetoothHeadset.STATE_DISCONNECTED) {
-            mConnectedBluetoothDevice = null
-            Log.d(TAG, "BluetoothHeadset disconnected")
         }
     }
-}
 
-private fun answerCall() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val telecomManager = getSystemService<Any>(Context.TELECOM_SERVICE) as TelecomManager?
-        if (telecomManager != null) {
-            telecomManager.acceptRingingCall()
-            Log.d(TAG, "Call answered automatically")
-        }
-    } else {
+    @Suppress("DEPRECATION")
+    private fun answerCall() {
         try {
-            // for older API versions
-            Runtime.getRuntime().exec("input keyevent " + KeyEvent.KEYCODE_HEADSETHOOK)
-            Log.d(TAG, "Call answered automatically")
-        } catch (e: IOException) {
-            e.printStackTrace()
+            val telephonyService = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            val m = telephonyService.javaClass.getDeclaredMethod("answerRingingCall")
+            m.invoke(telephonyService)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error answering call: ${e.message}")
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun answerRingingCall() {
+        val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
+            == PackageManager.PERMISSION_GRANTED) {
+            telecomManager.acceptRingingCall()
+        } else {
+            Log.e(TAG, "Permission to answer phone calls not granted")
+        }
+    }
+
+    companion object {
+        private const val TAG = "MockBluetoothHeadset"
     }
 }
