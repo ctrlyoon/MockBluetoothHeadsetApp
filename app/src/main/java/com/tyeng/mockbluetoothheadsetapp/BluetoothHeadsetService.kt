@@ -2,11 +2,10 @@ package com.tyeng.mockbluetoothheadsetapp
 
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.app.Service
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothHeadset
-import android.bluetooth.BluetoothProfile
+import android.bluetooth.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
@@ -70,58 +69,20 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener, PhoneSta
         }
     }
 
-    private val mProfileListener = object : BluetoothProfile.ServiceListener {
-        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-            Log.d(TAG, "onServiceConnected")
-            if (profile == BluetoothProfile.HEADSET) {
-                mBluetoothHeadset = proxy as BluetoothHeadset
-                mBluetoothHeadset.startVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
-                Log.d(TAG, "startVoiceRecognition")
-                Thread.sleep(3000)
-                mBluetoothHeadset.stopVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
-                Log.d(TAG, "stopVoiceRecognition")
-                ttsManager.speak("Incoming call answered.")
-                autoAnswer()
-            }
-        }
-
-        override fun onServiceDisconnected(profile: Int) {
-            Log.d(TAG, "onServiceDisconnected")
-        }
-    }
-
-    private fun autoAnswer() {
-        try {
-            val headset = Class.forName(mBluetoothHeadset.javaClass.name)
-            val m = headset.getDeclaredMethod(
-                "phoneStateChanged",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                String::class.java
-            )
-            m.isAccessible = true
-            m.invoke(mBluetoothHeadset, 1, 0, "")
-            Log.d(TAG, "Auto answer.")
-        } catch (e: Exception) {
-            Log.e(TAG, e.toString())
-        }
-    }
-
-    private fun requestBluetoothConnectPermission() {
-        if (ActivityCompat.checkSelfPermission(this,Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
-                1
-            )
-        }
-    }
-
     private val mHeadsetProfileListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
             if (profile == BluetoothProfile.HEADSET) {
                 mBluetoothHeadset = proxy as BluetoothHeadset
+                if (ActivityCompat.checkSelfPermission(applicationContext,BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    // TODO: Consider calling
+                    //    ActivityCompat#requestPermissions
+                    // here to request the missing permissions, and then overriding
+                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                    //                                          int[] grantResults)
+                    // to handle the case where the user grants the permission. See the documentation
+                    // for ActivityCompat#requestPermissions for more details.
+                    return
+                }
                 if (mBluetoothHeadset.connectedDevices.isNotEmpty()) {
                     val device = mBluetoothHeadset.connectedDevices[0]
                     setActiveDevice(device)
@@ -140,6 +101,20 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener, PhoneSta
     private fun connectToHeadset() {
         if (!btAdapter.isEnabled) {
             Log.e(TAG, "Bluetooth is not enabled")
+            return
+        }
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
             return
         }
         if (mBluetoothHeadset != null && mBluetoothHeadset.connectedDevices.isNotEmpty()) {
