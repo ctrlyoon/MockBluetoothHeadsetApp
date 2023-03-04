@@ -1,14 +1,18 @@
 package com.tyeng.mockbluetoothheadsetapp
 
+import android.Manifest
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothHeadset
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import com.tyeng.mockbluetoothheadsetapp.com.tyeng.mockbluetoothheadsetapp.TextToSpeechManager
 
 class BluetoothHeadsetService : Service() {
 
@@ -49,9 +53,34 @@ class BluetoothHeadsetService : Service() {
             Log.d(TAG, "onServiceConnected")
             if (profile == BluetoothProfile.HEADSET) {
                 mBluetoothHeadset = proxy as BluetoothHeadset
+                if (ActivityCompat.checkSelfPermission(applicationContext,Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    // TODO: Consider calling
+                    //    ActivityCompat#requestPermissions
+                    // here to request the missing permissions, and then overriding
+                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                    //                                          int[] grantResults)
+                    // to handle the case where the user grants the permission. See the documentation
+                    // for ActivityCompat#requestPermissions for more details.
+                    return
+                }
                 mBluetoothHeadset.startVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
                 Log.d(TAG, "startVoiceRecognition")
                 Thread.sleep(3000)
+                if (ActivityCompat.checkSelfPermission(
+                        applicationContext,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    // TODO: Consider calling
+                    //    ActivityCompat#requestPermissions
+                    // here to request the missing permissions, and then overriding
+                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                    //                                          int[] grantResults)
+                    // to handle the case where the user grants the permission. See the documentation
+                    // for ActivityCompat#requestPermissions for more details.
+                    return
+                }
                 mBluetoothHeadset.stopVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
                 Log.d(TAG, "stopVoiceRecognition")
                 TextToSpeechManager.speak("Incoming call answered.")
