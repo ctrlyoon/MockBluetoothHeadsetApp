@@ -61,7 +61,7 @@ class MockBluetoothHeadset(private val context: Context) {
             Log.d(TAG, "Bluetooth is already enabled")
         }
 
-        connectToHeadset(btAdapter.getProfileProxy(context, mProfileListener, BluetoothProfile.HEADSET) as BluetoothHeadset)
+        connectToHeadset(btAdapter!!.getProfileProxy(context, mProfileListener, BluetoothProfile.HEADSET) as BluetoothHeadset)
     }
 
     fun disableBluetooth() {
@@ -72,11 +72,7 @@ class MockBluetoothHeadset(private val context: Context) {
 
         if (btAdapter!!.isEnabled) {
             Log.d(TAG, "Disabling Bluetooth...")
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.BLUETOOTH_CONNECT
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
+            if (ActivityCompat.checkSelfPermission(context,Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                 // TODO: Consider calling
                 //    ActivityCompat#requestPermissions
                 // here to request the missing permissions, and then overriding
@@ -95,11 +91,7 @@ class MockBluetoothHeadset(private val context: Context) {
     private fun connectToHeadset(bluetoothHeadset: BluetoothHeadset) {
         val pairedDevices: Set<BluetoothDevice>? = btAdapter?.bondedDevices
         pairedDevices?.forEach { device ->
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.BLUETOOTH_CONNECT
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
+            if (ActivityCompat.checkSelfPermission(context,Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                 // TODO: Consider calling
                 //    ActivityCompat#requestPermissions
                 // here to request the missing permissions, and then overriding
