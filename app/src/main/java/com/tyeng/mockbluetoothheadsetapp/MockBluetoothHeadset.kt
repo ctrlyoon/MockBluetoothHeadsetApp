@@ -4,7 +4,6 @@ import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHeadset
-import android.bluetooth.BluetoothHeadsetClient
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
@@ -24,9 +23,9 @@ class MockBluetoothHeadset(private val context: Context) {
     private val mProfileListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
             Log.d(TAG, "onServiceConnected")
-            if (profile == BluetoothProfile.HEADSET_CLIENT) {
-                val bluetoothHeadsetClient = proxy as BluetoothHeadsetClient
-                connectToHeadset(bluetoothHeadsetClient)
+            if (profile == BluetoothProfile.HEADSET) {
+                val bluetoothHeadset = proxy as BluetoothHeadset
+                connectToHeadset(bluetoothHeadset)
             }
         }
 
@@ -55,7 +54,7 @@ class MockBluetoothHeadset(private val context: Context) {
             Log.d(TAG, "Bluetooth is already enabled")
         }
 
-        connectToHeadset(btAdapter!!.getProfileProxy(context, mProfileListener, BluetoothProfile.HEADSET_CLIENT) as BluetoothHeadsetClient)
+        connectToHeadset(btAdapter!!.getProfileProxy(context, mProfileListener, BluetoothProfile.HEADSET) as BluetoothHeadset)
     }
 
     fun disableBluetooth() {
@@ -75,19 +74,23 @@ class MockBluetoothHeadset(private val context: Context) {
         }
     }
 
-    private fun connectToHeadset(bluetoothHeadsetClient: BluetoothHeadsetClient) {
+    private fun connectToHeadset(bluetoothHeadset: BluetoothHeadset) {
         val pairedDevices: Set<BluetoothDevice>? = btAdapter?.bondedDevices
         pairedDevices?.forEach { device ->
             if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                 return
             }
-            if (bluetoothHeadsetClient.isAudioConnected(device)) {
-                bluetoothHeadsetClient.disconnectAudio(device)
-                Log.d(TAG, "disconnectAudio")
+            if (bluetoothHeadset.getConnectedDevices().contains(device)) {
+                bluetoothHeadset.stopVoiceRecognition(device)
+                Log.d(TAG, "disconnect")
             } else {
-                bluetoothHeadsetClient.connect(device)
+                bluetoothHeadset.startVoiceRecognition(device)
                 Log.d(TAG, "connect")
+                // Set the active device
+//                bluetoothHeadset.setActiveDevice(device)
             }
         }
     }
+
+
 }
