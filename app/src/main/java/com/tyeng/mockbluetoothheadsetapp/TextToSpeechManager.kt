@@ -1,35 +1,41 @@
-package com.tyeng.mockbluetoothheadsetapp
+package com.tyeng.mockbluetoothheadsetapp.com.tyeng.mockbluetoothheadsetapp
 
-import android.app.Service
-import android.content.Intent
-import android.os.IBinder
+import android.content.Context
+import android.speech.tts.TextToSpeech
 import android.util.Log
+import java.util.*
 
-class BluetoothHeadsetService : Service() {
-
-    companion object {
-        private const val TAG = "BluetoothHeadsetService"
+object TextToSpeechManager : TextToSpeech.OnInitListener {
+    private const val TAG = "TextToSpeechManager"
+    private var mTextToSpeech: TextToSpeech? = null
+    fun initialize(context: Context) {
+        mTextToSpeech = TextToSpeech(context, this)
     }
 
-    private lateinit var mockBluetoothHeadset: MockBluetoothHeadset
-    private lateinit var textToSpeechManager: TextToSpeechManager
+    fun speak(text: String) {
+        if (mTextToSpeech != null && mTextToSpeech!!.isSpeaking) {
+            mTextToSpeech!!.stop()
+        }
 
-    override fun onCreate() {
-        super.onCreate()
+        val result: Int = mTextToSpeech?.setLanguage(Locale.US) ?: TextToSpeech.ERROR
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            Log.e(TAG, "This Language is not supported")
+            return
+        }
 
-        mockBluetoothHeadset = MockBluetoothHeadset(this)
-        mockBluetoothHeadset.enableBluetooth()
-
-        textToSpeechManager = TextToSpeechManager(this)
-        textToSpeechManager.init()
+        mTextToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand")
-        return START_STICKY
+    fun shutdown() {
+        mTextToSpeech?.stop()
+        mTextToSpeech?.shutdown()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        mockBluetoothHeadset.disableBluetooth()
-        text
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            Log.d(TAG, "TextToSpeech initialized.")
+        } else {
+            Log.e(TAG, "TextToSpeech initialization failed!")
+        }
+    }
+}
