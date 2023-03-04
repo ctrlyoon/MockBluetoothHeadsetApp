@@ -13,21 +13,19 @@ import android.util.Log
 import java.util.*
 
 class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener {
+
     companion object {
         private const val TAG = "BluetoothHeadsetService"
     }
 
     private lateinit var audioManager: AudioManager
-    private lateinit var btAdapter: BluetoothAdapter
     private lateinit var mockBluetoothHeadset: MockBluetoothHeadset
-    private lateinit var mBluetoothHeadset: BluetoothHeadset
     private var mTextToSpeech: TextToSpeech? = null
 
     override fun onCreate() {
         super.onCreate()
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        btAdapter = BluetoothAdapter.getDefaultAdapter()
         mockBluetoothHeadset = MockBluetoothHeadset(this)
         mockBluetoothHeadset.enableBluetooth()
         mTextToSpeech = TextToSpeech(this, this)
@@ -63,13 +61,14 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
             Log.d(TAG, "onServiceConnected")
             if (profile == BluetoothProfile.HEADSET) {
-                mBluetoothHeadset = proxy as BluetoothHeadset
+                val mBluetoothHeadset = proxy as BluetoothHeadset
                 mBluetoothHeadset.startVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
                 Log.d(TAG, "startVoiceRecognition")
                 Thread.sleep(3000)
                 mBluetoothHeadset.stopVoiceRecognition(mBluetoothHeadset.connectedDevices[0])
                 Log.d(TAG, "stopVoiceRecognition")
                 mTextToSpeech?.speak("Incoming call answered.", TextToSpeech.QUEUE_FLUSH, null, null)
+                mockBluetoothHeadset.autoAnswer(mBluetoothHeadset)
             }
         }
 
@@ -78,41 +77,23 @@ class BluetoothHeadsetService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
+    init {
+        mockBluetoothHeadset.connect(this, mProfileListener)
+    }
+
     private val mBluetoothStateListener = object : BluetoothAdapter.StateChangedListener() {
         override fun onStateChanged(adapter: BluetoothAdapter?, state: Int) {
             if (state == BluetoothAdapter.STATE_OFF) {
                 Log.d(TAG, "Bluetooth off")
             } else if (state == BluetoothAdapter.STATE_ON) {
                 Log.d(TAG, "Bluetooth on")
-                btAdapter.getProfileProxy(this@BluetoothHeadsetService, mProfileListener, BluetoothProfile.HEADSET)
+                mockBluetoothHeadset.connect(this@BluetoothHeadsetService, mProfileListener)
             }
         }
     }
 
-    init {
-        btAdapter.getProfileProxy(this@BluetoothHeadsetService, mProfileListener, BluetoothProfile.HEADSET)
-        btAdapter.addStateChangedListener(mBluetoothStateListener)
-
-        // Auto answer incoming call
-        audioManager.mode = AudioManager.MODE_IN_CALL
-        audioManager.isSpeakerphoneOn = true
-        val thread = Thread {
-            Thread.sleep(3000)
-            audioManager.isMicrophoneMute = false
-            audioManager.isSpeakerphoneOn = true
-            try {
-                val downKeyCode = KeyEvent.KEYCODE_HEADSETHOOK
-                val down = KeyEvent(KeyEvent.ACTION_DOWN, downKeyCode)
-                val up = KeyEvent(KeyEvent.ACTION_UP, downKeyCode)
-                val keyEvent = arrayOf(down, up)
-                for (i in keyEvent.indices) {
-                    Thread.sleep(100)
-                    audioManager.dispatchMediaKeyEvent(keyEvent[i])
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        thread.start()
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        mockBluetoothHeadset.disconnect()
     }
 }
